@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Email Follow-Up Assistant</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --accent:#4f46e5; --bg:#f7f7fb; --card:#fff; --border:#e5e5ee; --text:#1f2130; --muted:#6b7280; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin:0; background:var(--bg); color:var(--text); }
+  header { padding:24px 32px; border-bottom:1px solid var(--border); background:var(--card); display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:18px; margin:0; }
+  main { max-width:960px; margin:0 auto; padding:24px 32px 64px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+  .card h2 { font-size:15px; margin:0 0 14px; }
+  .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  .stat { text-align:center; padding:12px 4px; border-radius:8px; background:var(--bg); }
+  .stat .n { font-size:22px; font-weight:700; }
+  .stat .l { font-size:11px; color:var(--muted); text-transform:uppercase; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  input[type=text], textarea, input[type=number] { width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-family:inherit; }
+  textarea { min-height:110px; resize:vertical; }
+  button { background:var(--accent); color:#fff; border:none; padding:9px 16px; border-radius:8px; font-size:13px; cursor:pointer; font-weight:600; }
+  button.secondary { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); }
+  .badge { padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .b-pending { background:#f1f1f4; color:#666; }
+  .b-sent { background:#fff4e0; color:#92650a; }
+  .b-replied { background:#e4f7ea; color:#1a7a3f; }
+  .b-failed { background:#fde2e2; color:#b42318; }
+  .pill { display:inline-block; padding:4px 10px; border-radius:20px; font-size:12px; }
+  .connected { background:#e4f7ea; color:#1a7a3f; }
+  .disconnected { background:#fde2e2; color:#b42318; }
+  .hint { font-size:11.5px; color:var(--muted); margin-top:4px; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📬 Email Follow-Up Assistant</h1>
+  <span id="gmailStatus" class="pill disconnected">Checking Gmail…</span>
+</header>
+<main>
+
+  <div class="card">
+    <h2>1. Connect Gmail</h2>
+    <div id="connectArea"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Upload contacts (Excel)</h2>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+    <div class="hint">Needs a column named "email". Optional columns: name, school, business (anything else is kept too, and usable as {{column_name}}).</div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="uploadFile()">Upload</button>
+      <button class="secondary" onclick="exportContacts()">Export current list to Excel</button>
+    </div>
+    <div id="uploadResult" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Write your email</h2>
+    <div class="two-col">
+      <div>
+        <h3 style="font-size:13px;margin:0 0 4px">Initial email</h3>
+        <label>Subject</label>
+        <input type="text" id="subject" placeholder="Quick question, {{name}}">
+        <label>Body</label>
+        <textarea id="body" placeholder="Hi {{name}}, ... at {{school}} ..."></textarea>
+      </div>
+      <div>
+        <h3 style="font-size:13px;margin:0 0 4px">Follow-up email</h3>
+        <label>Subject</label>
+        <input type="text" id="fuSubject" placeholder="Following up, {{name}}">
+        <label>Body</label>
+        <textarea id="fuBody" placeholder="Just floating this back up..."></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div>
+        <label>Wait before follow-up #1 (days)</label>
+        <input type="number" id="followUpDays" value="3" style="width:90px">
+      </div>
+      <div>
+        <label>Wait before follow-up #2 (days)</label>
+        <input type="number" id="followUpDays2" value="3" style="width:90px">
+      </div>
+      <div>
+        <label># of follow-ups</label>
+        <input type="number" id="maxFollowUps" value="1" min="0" max="2" style="width:90px">
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="secondary" onclick="saveSettings()">Save</button>
+      <button onclick="sendCampaign()">Send to everyone pending</button>
+    </div>
+    <div id="sendResult" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h2>Dashboard</h2>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="card">
+    <h2>Contacts</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>School</th><th>Status</th><th>Follow-ups</th><th></th></tr></thead>
+      <tbody id="contactsBody"></tbody>
+    </table>
+  </div>
+
+</main>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
