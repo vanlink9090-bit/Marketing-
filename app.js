@@ -1,8 +1,8 @@
 const cfg = window.APP_CONFIG;
 const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 
-async function callFunction(name, opts = {}) {
-  const res = await fetch(`${cfg.FUNCTIONS_URL}/${name}`, {
+async function callFunction(url, opts = {}) {
+  const res = await fetch(url, {
     method: opts.method || 'POST',
     headers: { 'Content-Type': 'application/json', 'x-app-secret': cfg.APP_SECRET },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
@@ -18,7 +18,7 @@ async function refreshStatus() {
   const el = document.getElementById('gmailStatus');
   const connectArea = document.getElementById('connectArea');
   try {
-    const { connected, email } = await callFunction('oauth-status', { method: 'GET' });
+    const { connected, email } = await callFunction(cfg.FUNCTIONS.oauthStatus, { method: 'GET' });
     if (connected) {
       el.textContent = `Gmail connected (${email})`;
       el.className = 'pill connected';
@@ -176,7 +176,7 @@ async function sendCampaign() {
   await saveSettings();
   result.textContent = 'Sending…';
   try {
-    const r = await callFunction('send-campaign');
+    const r = await callFunction(cfg.FUNCTIONS.sendCampaign);
     result.textContent = `Sent ${r.sent} emails. ${r.failed ? r.failed + ' failed.' : ''}`;
     loadContacts();
     loadStats();
@@ -191,3 +191,4 @@ loadSettings();
 loadContacts();
 loadStats();
 setInterval(() => { loadContacts(); loadStats(); refreshStatus(); }, 30000);
+    
