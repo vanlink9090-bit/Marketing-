@@ -12,28 +12,7 @@ async function callFunction(url, opts = {}) {
   return data;
 }
 
-// --- Gmail connection ---
-
-async function refreshStatus() {
-  const el = document.getElementById('gmailStatus');
-  const connectArea = document.getElementById('connectArea');
-  try {
-    const { connected, email } = await callFunction(cfg.FUNCTIONS.oauthStatus, { method: 'GET' });
-    if (connected) {
-      el.textContent = `Gmail connected (${email})`;
-      el.className = 'pill connected';
-      connectArea.innerHTML = '<span class="hint">Gmail is connected.</span><br><button class="secondary" onclick="connectGmail()">Reconnect Gmail</button>';
-    } else {
-      el.textContent = 'Gmail not connected';
-      el.className = 'pill disconnected';
-      connectArea.innerHTML = '<button onclick="connectGmail()">Connect Gmail</button>';
-    }
-  } catch (e) {
-    el.textContent = 'Status check failed';
-    el.className = 'pill disconnected';
-    connectArea.innerHTML = '<button onclick="connectGmail()">Connect Gmail</button><div class="hint">Status check errored: ' + e.message + '</div>';
-  }
-}
+// --- Gmail accounts ---
 
 function connectGmail() {
   const scope = encodeURIComponent(
@@ -41,6 +20,62 @@ function connectGmail() {
   );
   const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(cfg.GOOGLE_CLIENT_ID)}&redirect_uri=${encodeURIComponent(cfg.GOOGLE_REDIRECT_URI)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
   window.location.href = url;
+}
+
+async function loadAccounts() {
+  const el = document.getElementById('gmailStatus');
+  const list = document.getElementById('accountsList');
+  try {
+    const { connected, accounts } = await callFunction(cfg.FUNCTIONS.accounts, { method: 'GET' });
+    if (connected) {
+      el.textContent = `${accounts.filter((a) => a.active).length} account(s) connected`;
+      el.className = 'pill connected';
+    } else {
+      el.textContent = 'No accounts connected';
+      el.className = 'pill disconnected';
+    }
+
+    if (!accounts.length) {
+      list.innerHTML = '<div class="hint">No Gmail accounts connected yet.</div>';
+      return;
+    }
+
+    list.innerHTML = accounts.map((a) => `
+      <div class="acct-row">
+        <div>
+          <strong>${a.connected_email}</strong>
+          <div class="hint">${a.sent_today} sent today</div>
+        </div>
+        <div class="row">
+          <label class="hint"><input type="checkbox" ${a.active ? 'checked' : ''} onchange="toggleAccount('${a.id}', this.checked)"> Active</label>
+          <button class="secondary" onclick="removeAccount('${a.id}', '${a.connected_email}')">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.textContent = 'Status check failed';
+    el.className = 'pill disconnected';
+    list.innerHTML = '<div class="hint">Error: ' + e.message + '</div>';
+  }
+}
+
+async function toggleAccount(id, active) {
+  try {
+    await callFunction(cfg.FUNCTIONS.accounts, { body: { action: 'toggle', id, active } });
+    loadAccounts();
+  } catch (e) {
+    alert('Failed to update account: ' + e.message);
+  }
+}
+
+async function removeAccount(id, email) {
+  if (!confirm(`Remove ${email}? Contacts already emailed by it keep their history, but no new emails will send from it.`)) return;
+  try {
+    await callFunction(cfg.FUNCTIONS.accounts, { body: { action: 'remove', id } });
+    loadAccounts();
+  } catch (e) {
+    alert('Failed to remove account: ' + e.message);
+  }
 }
 
 // --- Contacts (direct to Supabase, no server involved) ---
@@ -77,10 +112,44 @@ async function uploadFile() {
 
     if (!contacts.length) throw new Error('No rows had a usable "email" column');
 
-    const { error } = await sb.from('contacts').upsert(contacts, { onConflict: 'email' });
+    // Dedupe by email — Postgres' upsert fails if the same email appears
+    // twice in one batch ("ON CONFLICT DO UPDATE... affect row a second
+    // time"). Keep the last occurrence for each email.
+    const byEmail = new Map();
+    contacts.forEach((c) => byEmail.set(c.email, c));
+    const deduped = Array.from(byEmail.values());
+    const duplicateCount = contacts.length - deduped.length;
+
+    const { error } = await sb.from('contacts').upsert(deduped, { onConflict: 'email' });
     if (error) throw error;
 
-    result.textContent = `Imported/updated ${contacts.length} contacts.`;
+    result.textContent = `Imported/updated ${deduped.length} contacts.` +
+      (duplicateCount > 0 ? ` (${duplicateCount} duplicate email${duplicateCount > 1 ? 's' : ''} in the file were merged.)` : '') +
+      ' Review the list below and remove any you don\'t want before sending.';
+    loadContacts();
+    loadStats();
+  } catch (e) {
+    result.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function addContactManually() {
+  const name = document.getElementById('manualName').value.trim();
+  const email = document.getElementById('manualEmail').value.trim().toLowerCase();
+  const school = document.getElementById('manualSchool').value.trim();
+  const business = document.getElementById('manualBusiness').value.trim();
+  const result = document.getElementById('manualAddResult');
+
+  if (!email) { result.textContent = 'Email is required.'; return; }
+
+  try {
+    const { error } = await sb.from('contacts').upsert([{ name, email, school, business, extra: {} }], { onConflict: 'email' });
+    if (error) throw error;
+    result.textContent = `Added ${email}.`;
+    document.getElementById('manualName').value = '';
+    document.getElementById('manualEmail').value = '';
+    document.getElementById('manualSchool').value = '';
+    document.getElementById('manualBusiness').value = '';
     loadContacts();
     loadStats();
   } catch (e) {
@@ -154,6 +223,7 @@ async function loadSettings() {
   document.getElementById('followUpDays').value = data.follow_up_days ?? 3;
   document.getElementById('followUpDays2').value = data.follow_up_days_2 ?? 3;
   document.getElementById('maxFollowUps').value = data.max_follow_ups ?? 1;
+  document.getElementById('emailsPerAccount').value = data.emails_per_account ?? 10;
 }
 
 async function saveSettings() {
@@ -166,6 +236,7 @@ async function saveSettings() {
     follow_up_days: parseInt(document.getElementById('followUpDays').value, 10) || 3,
     follow_up_days_2: parseInt(document.getElementById('followUpDays2').value, 10) || 3,
     max_follow_ups: parseInt(document.getElementById('maxFollowUps').value, 10) || 0,
+    emails_per_account: parseInt(document.getElementById('emailsPerAccount').value, 10) || 10,
   };
   await sb.from('campaign_settings').upsert(payload);
   document.getElementById('sendResult').textContent = 'Saved.';
@@ -177,18 +248,24 @@ async function sendCampaign() {
   result.textContent = 'Sending…';
   try {
     const r = await callFunction(cfg.FUNCTIONS.sendCampaign);
-    result.textContent = `Sent ${r.sent} emails. ${r.failed ? r.failed + ' failed.' : ''}`;
+    let msg = `Sent ${r.sent} emails.`;
+    if (r.failed) msg += ` ${r.failed} failed.`;
+    if (r.perAccountSent) {
+      msg += ' (' + Object.entries(r.perAccountSent).map(([email, n]) => `${email}: ${n}`).join(', ') + ')';
+    }
+    result.textContent = msg;
     loadContacts();
     loadStats();
+    loadAccounts();
   } catch (e) {
     result.textContent = 'Error: ' + e.message;
   }
 }
 
 // --- boot ---
-refreshStatus();
+loadAccounts();
 loadSettings();
 loadContacts();
 loadStats();
-setInterval(() => { loadContacts(); loadStats(); refreshStatus(); }, 30000);
-    
+setInterval(() => { loadContacts(); loadStats(); loadAccounts(); }, 30000);
+                                   
