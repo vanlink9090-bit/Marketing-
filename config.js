@@ -12,7 +12,7 @@ window.APP_CONFIG = {
   // Real per-function URLs — Supabase assigned random slugs instead of the
   // names we asked for, so these map our logical names to the actual URLs.
   FUNCTIONS: {
-    oauthStatus: 'https://gytcjlbkmnhnpycyisib.supabase.co/functions/v1/dynamic-endpoint',
+    accounts: 'https://gytcjlbkmnhnpycyisib.supabase.co/functions/v1/dynamic-endpoint',
     sendCampaign: 'https://gytcjlbkmnhnpycyisib.supabase.co/functions/v1/smooth-handler',
     checkReplies: 'https://gytcjlbkmnhnpycyisib.supabase.co/functions/v1/smart-worker',
     sendFollowups: 'https://gytcjlbkmnhnpycyisib.supabase.co/functions/v1/rapid-responder',

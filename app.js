@@ -112,20 +112,10 @@ async function uploadFile() {
 
     if (!contacts.length) throw new Error('No rows had a usable "email" column');
 
-    // Dedupe by email — Postgres' upsert fails if the same email appears
-    // twice in one batch ("ON CONFLICT DO UPDATE... affect row a second
-    // time"). Keep the last occurrence for each email.
-    const byEmail = new Map();
-    contacts.forEach((c) => byEmail.set(c.email, c));
-    const deduped = Array.from(byEmail.values());
-    const duplicateCount = contacts.length - deduped.length;
-
-    const { error } = await sb.from('contacts').upsert(deduped, { onConflict: 'email' });
+    const { error } = await sb.from('contacts').upsert(contacts, { onConflict: 'email' });
     if (error) throw error;
 
-    result.textContent = `Imported/updated ${deduped.length} contacts.` +
-      (duplicateCount > 0 ? ` (${duplicateCount} duplicate email${duplicateCount > 1 ? 's' : ''} in the file were merged.)` : '') +
-      ' Review the list below and remove any you don\'t want before sending.';
+    result.textContent = `Imported/updated ${contacts.length} contacts. Review the list below and remove any you don't want before sending.`;
     loadContacts();
     loadStats();
   } catch (e) {
@@ -268,4 +258,3 @@ loadSettings();
 loadContacts();
 loadStats();
 setInterval(() => { loadContacts(); loadStats(); loadAccounts(); }, 30000);
-                                   

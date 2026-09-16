@@ -36,6 +36,9 @@
   .disconnected { background:#fde2e2; color:#b42318; }
   .hint { font-size:11.5px; color:var(--muted); margin-top:4px; }
   .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .acct-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .acct-row:last-child { border-bottom:none; }
+  .four-col { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; }
 </style>
 </head>
 <body>
@@ -46,8 +49,12 @@
 <main>
 
   <div class="card">
-    <h2>1. Connect Gmail</h2>
-    <div id="connectArea"></div>
+    <h2>1. Manage Gmail accounts</h2>
+    <div id="accountsList" class="hint">Loading…</div>
+    <div class="row" style="margin-top:12px">
+      <button onclick="connectGmail()">+ Add a Gmail account</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Each account you add must be authorized as a test user in Google Cloud Console (OAuth consent screen → Audience → Test users) while the app is in Testing mode.</div>
   </div>
 
   <div class="card">
@@ -59,6 +66,22 @@
       <button class="secondary" onclick="exportContacts()">Export current list to Excel</button>
     </div>
     <div id="uploadResult" class="hint"></div>
+
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <h3 style="font-size:13px;margin:0 0 8px">Or add one contact manually</h3>
+      <div class="four-col">
+        <div><label>Name</label><input type="text" id="manualName"></div>
+        <div><label>Email</label><input type="text" id="manualEmail"></div>
+        <div><label>School</label><input type="text" id="manualSchool"></div>
+        <div><label>Business</label><input type="text" id="manualBusiness"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="secondary" onclick="addContactManually()">Add contact</button>
+      </div>
+      <div id="manualAddResult" class="hint"></div>
+    </div>
+
+    <div class="hint" style="margin-top:10px">Everything you upload or add lands in the Contacts table below as "pending" — nothing sends automatically. Review it and remove any rows you don't want before clicking Send.</div>
   </div>
 
   <div class="card">
@@ -91,6 +114,10 @@
       <div>
         <label># of follow-ups</label>
         <input type="number" id="maxFollowUps" value="1" min="0" max="2" style="width:90px">
+      </div>
+      <div>
+        <label>Emails per account before rotating</label>
+        <input type="number" id="emailsPerAccount" value="10" min="1" style="width:90px">
       </div>
     </div>
     <div class="row" style="margin-top:10px">
