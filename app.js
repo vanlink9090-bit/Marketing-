@@ -112,10 +112,20 @@ async function uploadFile() {
 
     if (!contacts.length) throw new Error('No rows had a usable "email" column');
 
-    const { error } = await sb.from('contacts').upsert(contacts, { onConflict: 'email' });
+    // Dedupe by email — Postgres' upsert fails if the same email appears
+    // twice in one batch ("ON CONFLICT DO UPDATE... affect row a second
+    // time"). Keep the last occurrence for each email.
+    const byEmail = new Map();
+    contacts.forEach((c) => byEmail.set(c.email, c));
+    const deduped = Array.from(byEmail.values());
+    const duplicateCount = contacts.length - deduped.length;
+
+    const { error } = await sb.from('contacts').upsert(deduped, { onConflict: 'email' });
     if (error) throw error;
 
-    result.textContent = `Imported/updated ${contacts.length} contacts. Review the list below and remove any you don't want before sending.`;
+    result.textContent = `Imported/updated ${deduped.length} contacts.` +
+      (duplicateCount > 0 ? ` (${duplicateCount} duplicate email${duplicateCount > 1 ? 's' : ''} in the file were merged.)` : '') +
+      ' Review the list below and remove any you don\'t want before sending.';
     loadContacts();
     loadStats();
   } catch (e) {
@@ -214,6 +224,55 @@ async function loadSettings() {
   document.getElementById('followUpDays2').value = data.follow_up_days_2 ?? 3;
   document.getElementById('maxFollowUps').value = data.max_follow_ups ?? 1;
   document.getElementById('emailsPerAccount').value = data.emails_per_account ?? 10;
+  updatePauseButton(!!data.paused);
+}
+
+function updatePauseButton(paused) {
+  const btn = document.getElementById('pauseBtn');
+  if (paused) {
+    btn.textContent = 'Resume sending';
+    btn.style.borderColor = '#1a7a3f';
+    btn.style.color = '#1a7a3f';
+  } else {
+    btn.textContent = 'Pause sending';
+    btn.style.borderColor = '#b42318';
+    btn.style.color = '#b42318';
+  }
+}
+
+async function togglePause() {
+  const { data } = await sb.from('campaign_settings').select('paused').eq('id', 1).maybeSingle();
+  const newPaused = !(data && data.paused);
+  await sb.from('campaign_settings').update({ paused: newPaused }).eq('id', 1);
+  updatePauseButton(newPaused);
+  document.getElementById('sendResult').textContent = newPaused
+    ? 'Paused. Any send in progress will stop within seconds; follow-ups are on hold too.'
+    : 'Resumed. Sending and follow-ups are active again.';
+}
+
+async function resetCampaign() {
+  if (!confirm('Reset the whole campaign? Every contact goes back to "pending" — sent/replied status, follow-up counts, and email thread history all get cleared. Contacts themselves and connected Gmail accounts are NOT deleted. This cannot be undone.')) return;
+  const result = document.getElementById('sendResult');
+  result.textContent = 'Resetting…';
+  try {
+    const { error } = await sb.from('contacts').update({
+      status: 'pending',
+      sent_at: null,
+      follow_up_count: 0,
+      last_follow_up_at: null,
+      replied_at: null,
+      gmail_thread_id: null,
+      gmail_message_id: null,
+      gmail_rfc_message_id: null,
+      assigned_account_id: null,
+    }).not('id', 'is', null);
+    if (error) throw error;
+    result.textContent = 'Campaign reset — all contacts are pending again.';
+    loadContacts();
+    loadStats();
+  } catch (e) {
+    result.textContent = 'Reset failed: ' + e.message;
+  }
 }
 
 async function saveSettings() {
