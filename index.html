@@ -123,8 +123,11 @@
     <div class="row" style="margin-top:10px">
       <button class="secondary" onclick="saveSettings()">Save</button>
       <button onclick="sendCampaign()">Send to everyone pending</button>
+      <button id="pauseBtn" class="secondary" onclick="togglePause()" style="border-color:#b42318;color:#b42318">Pause sending</button>
+      <button class="secondary" onclick="resetCampaign()" style="border-color:#b42318;color:#b42318">Reset campaign</button>
     </div>
     <div id="sendResult" class="hint"></div>
+    <div class="hint">"Pause sending" stops an in-progress send within seconds and blocks all future sends/follow-ups until you resume. "Reset campaign" puts every contact back to "pending" (clears sent/replied status, follow-up counts, and thread history) so you can start over — it does not delete contacts or disconnect accounts.</div>
   </div>
 
   <div class="card">
